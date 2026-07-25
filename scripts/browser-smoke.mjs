@@ -2,12 +2,12 @@ import { chromium, webkit } from 'playwright';
 import { PNG } from 'pngjs';
 
 const BASE_TARGET = process.env.MAP_URL || 'http://127.0.0.1:4173/RFxchange-Prototype/';
-const EXPECTED_BUILD = 'leaflet-2d-baseline-2026-07-25';
+const EXPECTED_BUILD = 'leaflet-mobile-recovery-2026-07-25-1';
 const SCREENSHOT_PREFIX = process.env.SMOKE_PREFIX || 'map-smoke';
 
 function targetWithCacheBust() {
   const url = new URL(BASE_TARGET);
-  url.searchParams.set('rfx_build_check', `${Date.now()}`);
+  url.searchParams.set('rfx_build_check', `${Date.now()}-${Math.random().toString(16).slice(2)}`);
   return url.toString();
 }
 
@@ -39,17 +39,20 @@ function assertVisuallyRendered(buffer, name) {
   return colors.size;
 }
 
-async function verify(browserType, name) {
+function isBasemapUrl(url) {
+  return url.includes('tile.openstreetmap.org') || url.includes('basemaps.cartocdn.com');
+}
+
+async function verify(browserType, name, contextOptions) {
   const browser = await browserType.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext(contextOptions);
+  const page = await context.newPage();
   const pageErrors = [];
   let tileResponses = 0;
 
   page.on('pageerror', (error) => pageErrors.push(error.message));
   page.on('response', (response) => {
-    if (response.url().includes('tile.openstreetmap.org') && response.ok()) {
-      tileResponses += 1;
-    }
+    if (isBasemapUrl(response.url()) && response.ok()) tileResponses += 1;
   });
 
   try {
@@ -78,22 +81,41 @@ async function verify(browserType, name) {
         height: rect?.height ?? 0,
         tileCount: tiles.length,
         loadedImages: tiles.filter((tile) => tile.complete && tile.naturalWidth > 0).length,
+        provider: document.documentElement.dataset.mapProvider || '',
+        failed: document.documentElement.dataset.mapFailed === 'true',
       };
     });
 
     if (state.width < 300 || state.height < 300) throw new Error(`${name}: map container has unusable dimensions.`);
     if (state.tileCount === 0 || state.loadedImages === 0) throw new Error(`${name}: no visible map tiles loaded.`);
-    if (tileResponses === 0) throw new Error(`${name}: no successful OpenStreetMap tile responses observed.`);
+    if (tileResponses === 0) throw new Error(`${name}: no successful basemap tile responses observed.`);
+    if (!['osm', 'carto'].includes(state.provider)) throw new Error(`${name}: no recognized basemap provider reached ready state.`);
+    if (state.failed) throw new Error(`${name}: map entered its visible failure state.`);
     if (pageErrors.length > 0) throw new Error(`${name}: browser page error: ${pageErrors.join(' | ')}`);
 
     const screenshot = await page.screenshot({ path: `${SCREENSHOT_PREFIX}-${name}.png`, fullPage: true });
     const colorBins = assertVisuallyRendered(screenshot, name);
 
-    console.log(`${name}: expected build visibly rendered with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
+    console.log(`${name}: ${state.provider} visibly rendered with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
   } finally {
+    await context.close();
     await browser.close();
   }
 }
 
-await verify(chromium, 'chromium');
-await verify(webkit, 'webkit');
+await verify(chromium, 'chromium-desktop', {
+  viewport: { width: 1440, height: 900 },
+});
+
+await verify(webkit, 'webkit-desktop', {
+  viewport: { width: 1440, height: 900 },
+});
+
+await verify(webkit, 'webkit-iphone', {
+  viewport: { width: 430, height: 932 },
+  screen: { width: 430, height: 932 },
+  deviceScaleFactor: 3,
+  isMobile: true,
+  hasTouch: true,
+  userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1',
+});
