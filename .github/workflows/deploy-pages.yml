@@ -30,8 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Build 2D map
+      - name: Build map recovery baseline
         run: npm run build
+
+      - name: Smoke test basemap providers
+        run: npm run smoke:map
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -77,13 +80,13 @@ jobs:
               -H 'Cache-Control: no-cache' \
               -H 'Pragma: no-cache' \
               "${PAGE_URL}?rfx_build_check=${GITHUB_SHA}-${attempt}" || true)
-            if grep -q 'leaflet-2d-baseline-2026-07-25' <<< "$HTML"; then
-              echo 'Expected deployed build fingerprint found.'
+            if grep -q 'leaflet-mobile-recovery-2026-07-25-1' <<< "$HTML"; then
+              echo 'Expected deployed recovery build fingerprint found.'
               exit 0
             fi
             sleep 3
           done
-          echo 'GitHub Pages is not serving the expected 2D build fingerprint.' >&2
+          echo 'GitHub Pages is not serving the expected mobile recovery build fingerprint.' >&2
           exit 1
 
       - name: Browser-validate the public Pages site
