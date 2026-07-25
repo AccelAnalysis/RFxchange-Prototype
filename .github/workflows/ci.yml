@@ -30,6 +30,9 @@ jobs:
           set -o pipefail
           npm run build 2>&1 | tee build.log
 
+      - name: Verify map worker bundle
+        run: npm run check:map-bundle
+
       - name: Smoke test live GIS dependencies
         run: npm run smoke:gis
 
