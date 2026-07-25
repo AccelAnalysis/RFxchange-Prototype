@@ -1,73 +1,36 @@
-# The RFxchange Prototype
+# The RFxchange Map
 
-A standalone React prototype for The RFxchange business registration, geography onboarding, and 3D locality map experience.
+This repository has been reset to a minimal map-only application.
 
-This repository is intentionally independent from the `hi-coworking` application. It contains its own application entry point, package configuration, styling pipeline, map dependency, GIS integration, build workflow, and GitHub Pages deployment workflow.
+There is no onboarding flow, geography search, entitlement logic, mock environment, mock marker data, React application, or Tailwind UI in the current build.
 
-## Prototype flow
+## What runs
 
-1. Enter business account information.
-2. Search live U.S. geographies.
-3. Select a geography and retrieve its authoritative polygon or multipolygon.
-4. Validate the selected feature identity and store the canonical geography in onboarding state.
-5. Frame that locality in a 3D bird's-eye MapLibre view.
-6. Outline the selected locality and visually mute geography outside it.
-7. Revalidate the geography before opening the map experience.
-8. Continue on the same live 3D map with no fabricated businesses, resources, or map markers.
-
-## Geography and map data
-
-- Geography search and selected-locality boundaries: U.S. Census TIGERweb REST services.
-- Basemap: OpenFreeMap dark vector style rendered by MapLibre GL JS.
-- 3D buildings: OpenFreeMap / OpenMapTiles building data rendered with MapLibre fill extrusion.
-- Selected territory: highlighted with its authoritative boundary.
-- Other territory: visually muted during onboarding.
-- Mock map entities: none.
-
-## Geography authorization model
-
-The UI does not initialize a selected locality merely from an editable `selectedGeography` React value. Geography selection first retrieves and validates the feature, creates a canonical onboarding geography record, and creates a separate validated entitlement object. Entry re-fetches the boundary and verifies that the onboarding geography still matches the validated entitlement.
-
-### Production security boundary
-
-GitHub Pages is static hosting. A Pages-only build cannot provide a cryptographically trustworthy authorization boundary against a user who deliberately modifies JavaScript execution in their own browser.
-
-For production, geography entitlement must be issued and enforced by an authenticated server/API. The server should:
-
-- validate the requested geography against the authoritative GIS source;
-- persist the user's selected geography in the onboarding/account record;
-- issue or return the user's authorized geography entitlement;
-- filter organizations, resources, opportunities, referrals, and actions by that entitlement;
-- reject requests for geography-scoped participation that are not authorized for the authenticated user.
-
-The browser should render the server-authorized geography rather than deciding access from local state.
+- Vite serves and builds the site.
+- MapLibre GL JS renders one full-screen interactive map.
+- CARTO/OpenStreetMap raster tiles provide the live basemap.
+- OpenFreeMap/OpenMapTiles building data is added as a live vector source and rendered as 3D building extrusions.
+- The initial camera opens over Portsmouth, Virginia in a pitched bird's-eye view so the 3D behavior is immediately testable.
 
 ## Local development
-
-Requirements:
-
-- Node.js 22 recommended; Node.js 20.19 or newer supported.
-- npm 10 or newer recommended.
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite.
-
-## Production build and GIS smoke test
+## Production validation
 
 ```bash
 npm run build
-npm run smoke:gis
-npm run preview
+npm run check:map-bundle
+npm run smoke:map
 ```
 
-The production bundle is written to `dist/`. CI performs the Vite production build, verifies the MapLibre worker bundle, and runs a live GIS smoke test against TIGERweb and OpenFreeMap.
+CI also installs Chromium, starts the built Vite preview, opens the GitHub Pages path in a real browser, waits for MapLibre to reach an idle map state, confirms successful basemap tile responses and a visible canvas, confirms the 3D building layer was added, and saves a screenshot artifact.
 
 ## GitHub Pages
 
-The production Vite base path is `/RFxchange-Prototype/`. Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**. The deployment workflow publishes `dist/` after changes reach `main`.
+The production base path is `/RFxchange-Prototype/`. GitHub Pages should use **GitHub Actions** as its deployment source.
 
-Same-repository `codex/*` pull requests are automatically squash-merged after the `Build` workflow succeeds.
+Same-repository `codex/*` pull requests automatically merge after the `Build` workflow succeeds.
