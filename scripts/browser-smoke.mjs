@@ -2,12 +2,12 @@ import { chromium, webkit } from 'playwright';
 import { PNG } from 'pngjs';
 
 const BASE_TARGET = process.env.MAP_URL || 'http://127.0.0.1:4173/RFxchange-Prototype/';
-const EXPECTED_BUILD = 'leaflet-mobile-recovery-2026-07-25-1';
+const EXPECTED_BUILD = 'rfx-current-static-2026-07-25-1';
 const SCREENSHOT_PREFIX = process.env.SMOKE_PREFIX || 'map-smoke';
 
 function targetWithCacheBust() {
   const url = new URL(BASE_TARGET);
-  url.searchParams.set('rfx_build_check', `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  url.searchParams.set('rfx_build_check', `${EXPECTED_BUILD}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   return url.toString();
 }
 
@@ -63,6 +63,16 @@ async function verify(browserType, name, contextOptions) {
       throw new Error(`${name}: public page is not the expected build. Received ${buildMarker ?? 'no build marker'}.`);
     }
 
+    const deploymentMode = await page.locator('meta[name="rfx-deployment-mode"]').getAttribute('content');
+    if (deploymentMode !== 'static-root-and-actions') {
+      throw new Error(`${name}: public page is not the static unified deployment. Received ${deploymentMode ?? 'no deployment marker'}.`);
+    }
+
+    const staleRuntimeScripts = await page.locator('script[src*="/src/"], script[src*="maplibre"], script[src*="assets/index-"]').count();
+    if (staleRuntimeScripts > 0) {
+      throw new Error(`${name}: stale runtime script references are still present.`);
+    }
+
     await page.waitForSelector('.leaflet-container', { state: 'visible', timeout: 20_000 });
     await page.waitForFunction(
       () => document.documentElement.dataset.mapReady === 'true',
@@ -83,9 +93,11 @@ async function verify(browserType, name, contextOptions) {
         loadedImages: tiles.filter((tile) => tile.complete && tile.naturalWidth > 0).length,
         provider: document.documentElement.dataset.mapProvider || '',
         failed: document.documentElement.dataset.mapFailed === 'true',
+        build: document.documentElement.dataset.rfxBuild || '',
       };
     });
 
+    if (state.build !== EXPECTED_BUILD) throw new Error(`${name}: document build dataset is stale.`);
     if (state.width < 300 || state.height < 300) throw new Error(`${name}: map container has unusable dimensions.`);
     if (state.tileCount === 0 || state.loadedImages === 0) throw new Error(`${name}: no visible map tiles loaded.`);
     if (tileResponses === 0) throw new Error(`${name}: no successful basemap tile responses observed.`);
@@ -96,7 +108,7 @@ async function verify(browserType, name, contextOptions) {
     const screenshot = await page.screenshot({ path: `${SCREENSHOT_PREFIX}-${name}.png`, fullPage: true });
     const colorBins = assertVisuallyRendered(screenshot, name);
 
-    console.log(`${name}: ${state.provider} visibly rendered with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
+    console.log(`${name}: ${state.provider} visibly rendered ${EXPECTED_BUILD} with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
   } finally {
     await context.close();
     await browser.close();
