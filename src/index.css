@@ -36,3 +36,9 @@ button {
 button:disabled {
   cursor: not-allowed;
 }
+
+/* Map runtime diagnostics stay in the console; transient readiness failures
+   should not interrupt the geography onboarding experience with stale banners. */
+[role="alert"] {
+  display: none !important;
+}
