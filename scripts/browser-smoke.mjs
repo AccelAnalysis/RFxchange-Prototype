@@ -1,6 +1,35 @@
 import { chromium, webkit } from 'playwright';
+import { PNG } from 'pngjs';
 
 const TARGET = 'http://127.0.0.1:4173/RFxchange-Prototype/';
+
+function assertVisuallyRendered(buffer, name) {
+  const png = PNG.sync.read(buffer);
+  const colors = new Set();
+
+  const minX = Math.floor(png.width * 0.15);
+  const maxX = Math.floor(png.width * 0.85);
+  const minY = Math.floor(png.height * 0.15);
+  const maxY = Math.floor(png.height * 0.85);
+
+  for (let y = minY; y < maxY; y += 6) {
+    for (let x = minX; x < maxX; x += 6) {
+      const index = (png.width * y + x) * 4;
+      const r = png.data[index];
+      const g = png.data[index + 1];
+      const b = png.data[index + 2];
+      const a = png.data[index + 3];
+      if (a < 200) continue;
+      colors.add(`${r >> 4}:${g >> 4}:${b >> 4}`);
+    }
+  }
+
+  if (colors.size < 20) {
+    throw new Error(`${name}: screenshot is visually blank/uniform (${colors.size} sampled color bins).`);
+  }
+
+  return colors.size;
+}
 
 async function verify(browserType, name) {
   const browser = await browserType.launch({ headless: true });
@@ -24,6 +53,7 @@ async function verify(browserType, name) {
       { timeout: 30_000 },
     );
     await page.waitForSelector('.leaflet-tile-loaded', { state: 'visible', timeout: 20_000 });
+    await page.waitForTimeout(1000);
 
     const state = await page.evaluate(() => {
       const map = document.getElementById('map');
@@ -42,8 +72,10 @@ async function verify(browserType, name) {
     if (tileResponses === 0) throw new Error(`${name}: no successful OpenStreetMap tile responses observed.`);
     if (pageErrors.length > 0) throw new Error(`${name}: browser page error: ${pageErrors.join(' | ')}`);
 
-    await page.screenshot({ path: `map-smoke-${name}.png`, fullPage: true });
-    console.log(`${name}: 2D map rendered with ${state.loadedImages} loaded tile image(s) and ${tileResponses} successful tile response(s).`);
+    const screenshot = await page.screenshot({ path: `map-smoke-${name}.png`, fullPage: true });
+    const colorBins = assertVisuallyRendered(screenshot, name);
+
+    console.log(`${name}: 2D map visibly rendered with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
   } finally {
     await browser.close();
   }
