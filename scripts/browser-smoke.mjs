@@ -1,63 +1,53 @@
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
-const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const TARGET = 'http://127.0.0.1:4173/RFxchange-Prototype/';
 
-let basemapTiles = 0;
-const pageErrors = [];
+async function verify(browserType, name) {
+  const browser = await browserType.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const pageErrors = [];
+  let tileResponses = 0;
 
-page.on('response', (response) => {
-  if (response.url().includes('basemaps.cartocdn.com') && response.ok()) {
-    basemapTiles += 1;
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('response', (response) => {
+    if (response.url().includes('tile.openstreetmap.org') && response.ok()) {
+      tileResponses += 1;
+    }
+  });
+
+  try {
+    await page.goto(TARGET, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.waitForSelector('.leaflet-container', { state: 'visible', timeout: 20_000 });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.mapReady === 'true',
+      null,
+      { timeout: 30_000 },
+    );
+    await page.waitForSelector('.leaflet-tile-loaded', { state: 'visible', timeout: 20_000 });
+
+    const state = await page.evaluate(() => {
+      const map = document.getElementById('map');
+      const rect = map?.getBoundingClientRect();
+      const tiles = [...document.querySelectorAll('.leaflet-tile-loaded')];
+      return {
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+        tileCount: tiles.length,
+        loadedImages: tiles.filter((tile) => tile.complete && tile.naturalWidth > 0).length,
+      };
+    });
+
+    if (state.width < 300 || state.height < 300) throw new Error(`${name}: map container has unusable dimensions.`);
+    if (state.tileCount === 0 || state.loadedImages === 0) throw new Error(`${name}: no visible map tiles loaded.`);
+    if (tileResponses === 0) throw new Error(`${name}: no successful OpenStreetMap tile responses observed.`);
+    if (pageErrors.length > 0) throw new Error(`${name}: browser page error: ${pageErrors.join(' | ')}`);
+
+    await page.screenshot({ path: `map-smoke-${name}.png`, fullPage: true });
+    console.log(`${name}: 2D map rendered with ${state.loadedImages} loaded tile image(s) and ${tileResponses} successful tile response(s).`);
+  } finally {
+    await browser.close();
   }
-});
-
-page.on('pageerror', (error) => {
-  pageErrors.push(error.message);
-});
-
-try {
-  await page.goto('http://127.0.0.1:4173/RFxchange-Prototype/', {
-    waitUntil: 'domcontentloaded',
-    timeout: 30_000,
-  });
-
-  await page.waitForSelector('.maplibregl-canvas', {
-    state: 'visible',
-    timeout: 20_000,
-  });
-
-  await page.waitForFunction(
-    () => document.documentElement.dataset.mapReady === 'true',
-    null,
-    { timeout: 30_000 },
-  );
-
-  const state = await page.evaluate(() => {
-    const map = document.getElementById('map');
-    const canvas = document.querySelector('.maplibregl-canvas');
-    const mapRect = map?.getBoundingClientRect();
-    const canvasRect = canvas?.getBoundingClientRect();
-
-    return {
-      mapLoaded: document.documentElement.dataset.mapLoaded,
-      buildingsLayer: document.documentElement.dataset.buildingsLayer,
-      mapWidth: mapRect?.width ?? 0,
-      mapHeight: mapRect?.height ?? 0,
-      canvasWidth: canvasRect?.width ?? 0,
-      canvasHeight: canvasRect?.height ?? 0,
-    };
-  });
-
-  if (state.mapLoaded !== 'true') throw new Error('MapLibre load event did not fire.');
-  if (state.buildingsLayer !== 'ready') throw new Error('3D building layer was not added.');
-  if (state.mapWidth < 300 || state.mapHeight < 300) throw new Error('Map container has unusable dimensions.');
-  if (state.canvasWidth < 300 || state.canvasHeight < 300) throw new Error('MapLibre canvas has unusable dimensions.');
-  if (basemapTiles === 0) throw new Error('Browser did not successfully load any basemap tiles.');
-  if (pageErrors.length > 0) throw new Error(`Browser page error: ${pageErrors.join(' | ')}`);
-
-  await page.screenshot({ path: 'map-smoke.png', fullPage: true });
-  console.log(`Browser map smoke test passed: ${basemapTiles} basemap tile response(s), visible MapLibre canvas, 3D layer added.`);
-} finally {
-  await browser.close();
 }
+
+await verify(chromium, 'chromium');
+await verify(webkit, 'webkit');
