@@ -1,7 +1,15 @@
 import { chromium, webkit } from 'playwright';
 import { PNG } from 'pngjs';
 
-const TARGET = 'http://127.0.0.1:4173/RFxchange-Prototype/';
+const BASE_TARGET = process.env.MAP_URL || 'http://127.0.0.1:4173/RFxchange-Prototype/';
+const EXPECTED_BUILD = 'leaflet-2d-baseline-2026-07-25';
+const SCREENSHOT_PREFIX = process.env.SMOKE_PREFIX || 'map-smoke';
+
+function targetWithCacheBust() {
+  const url = new URL(BASE_TARGET);
+  url.searchParams.set('rfx_build_check', `${Date.now()}`);
+  return url.toString();
+}
 
 function assertVisuallyRendered(buffer, name) {
   const png = PNG.sync.read(buffer);
@@ -45,7 +53,13 @@ async function verify(browserType, name) {
   });
 
   try {
-    await page.goto(TARGET, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(targetWithCacheBust(), { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+    const buildMarker = await page.locator('meta[name="rfx-build"]').getAttribute('content');
+    if (buildMarker !== EXPECTED_BUILD) {
+      throw new Error(`${name}: public page is not the expected build. Received ${buildMarker ?? 'no build marker'}.`);
+    }
+
     await page.waitForSelector('.leaflet-container', { state: 'visible', timeout: 20_000 });
     await page.waitForFunction(
       () => document.documentElement.dataset.mapReady === 'true',
@@ -72,10 +86,10 @@ async function verify(browserType, name) {
     if (tileResponses === 0) throw new Error(`${name}: no successful OpenStreetMap tile responses observed.`);
     if (pageErrors.length > 0) throw new Error(`${name}: browser page error: ${pageErrors.join(' | ')}`);
 
-    const screenshot = await page.screenshot({ path: `map-smoke-${name}.png`, fullPage: true });
+    const screenshot = await page.screenshot({ path: `${SCREENSHOT_PREFIX}-${name}.png`, fullPage: true });
     const colorBins = assertVisuallyRendered(screenshot, name);
 
-    console.log(`${name}: 2D map visibly rendered with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
+    console.log(`${name}: expected build visibly rendered with ${state.loadedImages} loaded tile image(s), ${tileResponses} successful tile response(s), and ${colorBins} sampled color bins.`);
   } finally {
     await browser.close();
   }
