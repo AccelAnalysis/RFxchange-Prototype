@@ -24,19 +24,16 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium webkit
 
-      - name: Build map
+      - name: Build 2D map
         shell: bash
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
 
-      - name: Verify MapLibre worker bundle
-        run: npm run check:map-bundle
-
-      - name: Smoke test live map dependencies
+      - name: Smoke test OpenStreetMap tile service
         run: npm run smoke:map
 
       - name: Browser-render the built map
@@ -53,12 +50,12 @@ jobs:
           done
           npm run smoke:browser
 
-      - name: Upload map smoke screenshot
+      - name: Upload browser screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: map-smoke-screenshot
-          path: map-smoke.png
+          name: map-smoke-screenshots
+          path: map-smoke-*.png
           if-no-files-found: warn
 
       - name: Upload logs

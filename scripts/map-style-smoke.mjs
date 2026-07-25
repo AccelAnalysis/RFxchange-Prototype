@@ -1,21 +1,19 @@
-const CARTO_TILE = 'https://a.basemaps.cartocdn.com/dark_all/2/1/1@2x.png';
-const OPENFREEMAP_TILEJSON = 'https://tiles.openfreemap.org/planet';
+const OSM_TILE = 'https://tile.openstreetmap.org/12/1179/1605.png';
 
-async function assertOk(url, label) {
-  const response = await fetch(url, { redirect: 'follow' });
-  if (!response.ok) throw new Error(`${label} returned HTTP ${response.status}`);
-  return response;
+const response = await fetch(OSM_TILE, {
+  redirect: 'follow',
+  headers: {
+    'User-Agent': 'RFxchange-Prototype-CI/1.0',
+  },
+});
+
+if (!response.ok) {
+  throw new Error(`OpenStreetMap tile returned HTTP ${response.status}`);
 }
 
-const basemap = await assertOk(CARTO_TILE, 'CARTO basemap tile');
-if (!(basemap.headers.get('content-type') || '').startsWith('image/')) {
-  throw new Error('CARTO basemap did not return an image tile.');
+const contentType = response.headers.get('content-type') || '';
+if (!contentType.startsWith('image/')) {
+  throw new Error(`OpenStreetMap tile returned unexpected content type: ${contentType || 'none'}`);
 }
 
-const vectorResponse = await assertOk(OPENFREEMAP_TILEJSON, 'OpenFreeMap TileJSON');
-const vector = await vectorResponse.json();
-if (!Array.isArray(vector.tiles) || vector.tiles.length === 0) {
-  throw new Error('OpenFreeMap TileJSON does not expose vector tiles.');
-}
-
-console.log(`Map dependency smoke test passed: CARTO basemap tile and ${vector.tiles.length} OpenFreeMap vector tile template(s) available.`);
+console.log('Map dependency smoke test passed: OpenStreetMap returned a valid image tile.');

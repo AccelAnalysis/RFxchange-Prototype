@@ -4,32 +4,31 @@ body,
   width: 100%;
   height: 100%;
   margin: 0;
+  padding: 0;
 }
 
 html,
 body {
+  min-width: 320px;
+  min-height: 100%;
   overflow: hidden;
-  background: #0b0b0d;
+  background: #e5e7eb;
 }
 
 body {
-  min-width: 320px;
+  height: 100vh;
+  height: 100dvh;
 }
 
 #map {
   position: fixed;
   inset: 0;
+  z-index: 0;
+  height: 100vh;
+  height: 100dvh;
+  background: #e5e7eb;
 }
 
-.maplibregl-canvas {
-  outline: none;
-}
-
-.maplibregl-ctrl-attrib {
-  background: rgb(11 11 13 / 0.82) !important;
-  color: rgb(255 255 255 / 0.72) !important;
-}
-
-.maplibregl-ctrl-attrib a {
-  color: inherit !important;
+.leaflet-container {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }

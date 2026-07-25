@@ -1,16 +1,16 @@
 # The RFxchange Map
 
-This repository has been reset to a minimal map-only application.
+This repository is currently reduced to a minimal 2D map baseline.
 
-There is no onboarding flow, geography search, entitlement logic, mock environment, mock marker data, React application, or Tailwind UI in the current build.
+There is no onboarding flow, geography search, entitlement logic, mock environment, marker data, React application, Tailwind UI, MapLibre/WebGL renderer, 3D building layer, or map overlay in this build.
 
 ## What runs
 
 - Vite serves and builds the site.
-- MapLibre GL JS renders one full-screen interactive map.
-- CARTO/OpenStreetMap raster tiles provide the live basemap.
-- OpenFreeMap/OpenMapTiles building data is added as a live vector source and rendered as 3D building extrusions.
-- The initial camera opens over Portsmouth, Virginia in a pitched bird's-eye view so the 3D behavior is immediately testable.
+- Leaflet renders one full-screen interactive 2D map.
+- Standard OpenStreetMap raster tiles provide the basemap.
+- The initial view opens over Portsmouth, Virginia.
+- The page behind the map is light gray so a failed map cannot be mistaken for a dark map style.
 
 ## Local development
 
@@ -23,11 +23,10 @@ npm run dev
 
 ```bash
 npm run build
-npm run check:map-bundle
 npm run smoke:map
 ```
 
-CI also installs Chromium, starts the built Vite preview, opens the GitHub Pages path in a real browser, waits for MapLibre to reach an idle map state, confirms successful basemap tile responses and a visible canvas, confirms the 3D building layer was added, and saves a screenshot artifact.
+CI installs Chromium and WebKit, serves the production build at the GitHub Pages path, and requires both browser engines to display the Leaflet container and successfully load visible OpenStreetMap tile images. Screenshots from both engines are saved as artifacts.
 
 ## GitHub Pages
 
