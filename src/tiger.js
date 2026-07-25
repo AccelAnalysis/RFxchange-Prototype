@@ -43,7 +43,15 @@ function parseSearchText(input) {
   let stateCode = null;
   let stateAbbr = null;
 
-  const stateMatch = term.match(/(?:,\s*|\s+)([A-Za-z]{2})$/);
+  const exactStateAbbr = term.toUpperCase();
+  if (STATE_META[exactStateAbbr]) {
+    const [fips, name] = STATE_META[exactStateAbbr];
+    stateCode = fips;
+    stateAbbr = exactStateAbbr;
+    term = name;
+  }
+
+  const stateMatch = !stateCode ? term.match(/(?:,\s*|\s+)([A-Za-z]{2})$/) : null;
   if (stateMatch) {
     const candidate = stateMatch[1].toUpperCase();
     if (STATE_META[candidate]) {
