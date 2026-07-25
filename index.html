@@ -2,14 +2,38 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#e5e7eb" />
-    <meta name="description" content="The RFxchange 2D map baseline." />
-    <meta name="rfx-build" content="leaflet-2d-baseline-2026-07-25" />
-    <title>The RFxchange 2D Map</title>
+    <meta name="description" content="The RFxchange map recovery baseline." />
+    <meta name="rfx-build" content="leaflet-mobile-recovery-2026-07-25-1" />
+    <title>The RFxchange Map</title>
+    <script>
+      // This prototype previously changed map runtimes several times. Remove stale
+      // RFxchange-specific browser-managed state without touching other Pages apps
+      // hosted on the same accelanalysis.github.io origin.
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then((registrations) => {
+            registrations
+              .filter((registration) => registration.scope.includes('/RFxchange-Prototype/'))
+              .forEach((registration) => registration.unregister());
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then((keys) => Promise.all(
+            keys
+              .filter((key) => /rfxchange|rfx-exchange|rfxchange-prototype/i.test(key))
+              .map((key) => caches.delete(key)),
+          ));
+        }
+      } catch (error) {
+        console.warn('RFxchange stale-cache cleanup was unavailable:', error);
+      }
+    </script>
   </head>
   <body>
-    <div id="map" aria-label="Interactive 2D RFxchange map"></div>
+    <div id="map" aria-label="Interactive RFxchange map"></div>
+    <div id="map-status" role="status" aria-live="polite" hidden></div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
