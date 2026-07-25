@@ -24,25 +24,49 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: Build prototype
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build map
         shell: bash
         run: |
           set -o pipefail
           npm run build 2>&1 | tee build.log
 
-      - name: Verify map worker bundle
+      - name: Verify MapLibre worker bundle
         run: npm run check:map-bundle
 
       - name: Smoke test live map dependencies
         run: npm run smoke:map
 
-      - name: Smoke test live GIS dependencies
-        run: npm run smoke:gis
+      - name: Browser-render the built map
+        shell: bash
+        run: |
+          npm run preview -- --host 127.0.0.1 > preview.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill $PREVIEW_PID || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/RFxchange-Prototype/ > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          npm run smoke:browser
 
-      - name: Upload build log
+      - name: Upload map smoke screenshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build.log
-          if-no-files-found: error
+          name: map-smoke-screenshot
+          path: map-smoke.png
+          if-no-files-found: warn
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-and-preview-logs
+          path: |
+            build.log
+            preview.log
+          if-no-files-found: warn
