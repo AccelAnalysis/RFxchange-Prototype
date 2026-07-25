@@ -1,35 +1,53 @@
 # The RFxchange Map
 
-This repository is currently reduced to a minimal 2D map baseline.
+This repository currently serves one deployable artifact: a static RFxchange map baseline.
 
-There is no onboarding flow, geography search, entitlement logic, mock environment, marker data, React application, Tailwind UI, MapLibre/WebGL renderer, 3D building layer, or map overlay in this build.
+The same `index.html` works in both GitHub Pages modes:
+
+- **GitHub Actions Pages deployment** copies the static artifact from `dist/`.
+- **Repository-root Pages deployment** can also serve the same current `index.html` directly.
+
+That removes the previous split where source files, build output, cached bundles, and older map runtimes could make the public URL appear to serve a black-screen overlay experience.
+
+## Current build
+
+`rfx-current-static-2026-07-25-1`
+
+The current page includes this fingerprint in:
+
+- `<meta name="rfx-build">`
+- `document.documentElement.dataset.rfxBuild`
+- `dist/CURRENT_BUILD.json` after `npm run build`
 
 ## What runs
 
-- Vite serves and builds the site.
-- Leaflet renders one full-screen interactive 2D map.
-- Standard OpenStreetMap raster tiles provide the basemap.
-- The initial view opens over Portsmouth, Virginia.
-- The page behind the map is light gray so a failed map cannot be mistaken for a dark map style.
+- A self-contained static `index.html` page.
+- Leaflet 1.9.4 loaded from CDN.
+- OpenStreetMap raster tiles as the primary basemap.
+- CARTO raster tiles as the fallback basemap.
+- A full-screen map centered on Portsmouth, Virginia.
+- A light grid failure surface instead of any dark or black map background.
 
-## Local development
+## What is intentionally not in the current build
+
+The current artifact does not include onboarding, account registration, geography entitlement, mock environment panels, marker data, or the future production 3D controlled-locality experience. Those should be rebuilt on top of a reliable deployment baseline after the public map is consistently serving the current artifact.
+
+## Local commands
 
 ```bash
 npm install
-npm run dev
-```
-
-## Production validation
-
-```bash
 npm run build
 npm run smoke:map
 ```
 
-CI installs Chromium and WebKit, serves the production build at the GitHub Pages path, and requires both browser engines to display the Leaflet container and successfully load visible OpenStreetMap tile images. Screenshots from both engines are saved as artifacts.
+## Production validation
+
+The GitHub Actions deploy workflow rejects legacy runtime remnants, requires the current build fingerprint in the deployed HTML, and browser-validates the public Pages URL in Chromium, desktop WebKit, and iPhone-sized WebKit.
 
 ## GitHub Pages
 
-The production base path is `/RFxchange-Prototype/`. GitHub Pages should use **GitHub Actions** as its deployment source.
+The production URL is:
 
-Same-repository `codex/*` pull requests automatically merge after the `Build` workflow succeeds.
+`https://accelanalysis.github.io/RFxchange-Prototype/`
+
+GitHub Pages should use **GitHub Actions** as its deployment source, but this repository-root static fallback is kept so the same current map is served even if Pages is pointed at the root branch source.
