@@ -1,37 +1,36 @@
 # The RFxchange Prototype
 
-A standalone React prototype for The RFxchange business registration, geography onboarding, and controlled local map environment.
+A standalone React prototype for The RFxchange business registration, geography onboarding, and 3D locality map experience.
 
 This repository is intentionally independent from the `hi-coworking` application. It contains its own application entry point, package configuration, styling pipeline, map dependency, GIS integration, build workflow, and GitHub Pages deployment workflow.
 
 ## Prototype flow
 
-1. Create a mock business account.
-2. Enter the locality-selection journey.
-3. Search live U.S. Census TIGERweb geographies rather than a preset list.
-4. Select a geography and retrieve its authoritative polygon or multipolygon.
-5. Validate the selected feature identity and store the canonical geography in onboarding state.
-6. Frame that locality in a 3D birds-eye MapLibre view and mute territory outside the selected boundary.
-7. Revalidate the selected geography before entering the controlled RFxchange environment.
-8. Show only mock official-resource and Platinum-level user markers inside the selected locality.
-
-Bronze, Silver, and Gold users are intentionally not represented in the controlled-map mock data.
+1. Enter business account information.
+2. Search live U.S. geographies.
+3. Select a geography and retrieve its authoritative polygon or multipolygon.
+4. Validate the selected feature identity and store the canonical geography in onboarding state.
+5. Frame that locality in a 3D bird's-eye MapLibre view.
+6. Outline the selected locality and visually mute geography outside it.
+7. Revalidate the geography before opening the map experience.
+8. Continue on the same live 3D map with no fabricated businesses, resources, or map markers.
 
 ## Geography and map data
 
 - Geography search and selected-locality boundaries: U.S. Census TIGERweb REST services.
-- Basemap: CARTO raster tiles derived from OpenStreetMap data.
-- 3D buildings: OpenFreeMap / OpenMapTiles vector building data rendered with MapLibre fill extrusion.
-- Selected territory: highlighted with its Census boundary.
-- Other territory: visually muted during onboarding and treated as unavailable for full participation.
+- Basemap: OpenFreeMap dark vector style rendered by MapLibre GL JS.
+- 3D buildings: OpenFreeMap / OpenMapTiles building data rendered with MapLibre fill extrusion.
+- Selected territory: highlighted with its authoritative boundary.
+- Other territory: visually muted during onboarding.
+- Mock map entities: none.
 
 ## Geography authorization model
 
-The UI does not initialize a controlled RFxchange environment merely from an editable `selectedGeography` React value. Geography selection first retrieves and validates the Census feature, creates a canonical onboarding geography record, and creates a separate validated entitlement object. Environment entry re-fetches the Census boundary and verifies that the onboarding geography still matches the validated entitlement.
+The UI does not initialize a selected locality merely from an editable `selectedGeography` React value. Geography selection first retrieves and validates the feature, creates a canonical onboarding geography record, and creates a separate validated entitlement object. Entry re-fetches the boundary and verifies that the onboarding geography still matches the validated entitlement.
 
 ### Production security boundary
 
-GitHub Pages is a static hosting platform. Therefore a Pages-only build cannot provide a cryptographically trustworthy authorization boundary against a user who deliberately modifies JavaScript execution in their own browser. The current entitlement object is a prototype control that prevents ordinary client-state changes from switching the active environment, but it must not be treated as production authorization.
+GitHub Pages is static hosting. A Pages-only build cannot provide a cryptographically trustworthy authorization boundary against a user who deliberately modifies JavaScript execution in their own browser.
 
 For production, geography entitlement must be issued and enforced by an authenticated server/API. The server should:
 
@@ -41,7 +40,7 @@ For production, geography entitlement must be issued and enforced by an authenti
 - filter organizations, resources, opportunities, referrals, and actions by that entitlement;
 - reject requests for geography-scoped participation that are not authorized for the authenticated user.
 
-The browser should then render the server-authorized geography rather than deciding access from local state.
+The browser should render the server-authorized geography rather than deciding access from local state.
 
 ## Local development
 
@@ -65,8 +64,10 @@ npm run smoke:gis
 npm run preview
 ```
 
-The production bundle is written to `dist/`. CI performs both the Vite production build and a live GIS smoke test against TIGERweb and OpenFreeMap.
+The production bundle is written to `dist/`. CI performs the Vite production build, verifies the MapLibre worker bundle, and runs a live GIS smoke test against TIGERweb and OpenFreeMap.
 
 ## GitHub Pages
 
 The production Vite base path is `/RFxchange-Prototype/`. Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**. The deployment workflow publishes `dist/` after changes reach `main`.
+
+Same-repository `codex/*` pull requests are automatically squash-merged after the `Build` workflow succeeds.
