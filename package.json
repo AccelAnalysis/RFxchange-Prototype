@@ -12,12 +12,14 @@
     "preview": "vite preview",
     "check": "vite build",
     "smoke:map": "node scripts/map-style-smoke.mjs",
+    "smoke:browser": "node scripts/browser-smoke.mjs",
     "check:map-bundle": "node scripts/check-map-bundle.mjs"
   },
   "dependencies": {
     "maplibre-gl": "5.24.0"
   },
   "devDependencies": {
+    "playwright": "1.61.1",
     "vite": "8.1.5"
   }
 }
