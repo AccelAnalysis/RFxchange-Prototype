@@ -33,6 +33,9 @@ jobs:
       - name: Verify map worker bundle
         run: npm run check:map-bundle
 
+      - name: Smoke test live map dependencies
+        run: npm run smoke:map
+
       - name: Smoke test live GIS dependencies
         run: npm run smoke:gis
 
