@@ -1,16 +1,101 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-rfx-build="rfx-current-static-2026-07-25-1">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#e5e7eb" />
-    <meta name="description" content="The RFxchange map recovery baseline." />
-    <meta name="rfx-build" content="leaflet-mobile-recovery-2026-07-25-1" />
+    <meta name="description" content="The current RFxchange map deployment baseline." />
+    <meta name="rfx-build" content="rfx-current-static-2026-07-25-1" />
+    <meta name="rfx-deployment-mode" content="static-root-and-actions" />
     <title>The RFxchange Map</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQflnCOSEwQ6Eg7U1d9ff4h0F4m4lG0="
+      crossorigin=""
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #e5e7eb;
+      }
+
+      html,
+      body,
+      #map {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        min-width: 320px;
+        min-height: 100%;
+        overflow: hidden;
+        background: #e5e7eb;
+      }
+
+      body {
+        height: 100vh;
+        height: 100dvh;
+      }
+
+      #map {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        height: 100vh;
+        height: 100dvh;
+        background:
+          linear-gradient(rgb(148 163 184 / 0.14) 1px, transparent 1px),
+          linear-gradient(90deg, rgb(148 163 184 / 0.14) 1px, transparent 1px),
+          #e5e7eb;
+        background-size: 32px 32px;
+      }
+
+      .leaflet-container {
+        font-family: inherit;
+        background: #e5e7eb;
+      }
+
+      .leaflet-tile {
+        opacity: 1 !important;
+        visibility: visible !important;
+        transition: none !important;
+      }
+
+      .leaflet-control-container {
+        position: relative;
+        z-index: 900;
+      }
+
+      #map-status {
+        position: fixed;
+        left: 50%;
+        bottom: max(18px, env(safe-area-inset-bottom));
+        z-index: 1000;
+        width: min(560px, calc(100% - 32px));
+        transform: translateX(-50%);
+        border: 1px solid rgb(15 23 42 / 0.15);
+        border-radius: 14px;
+        background: rgb(255 255 255 / 0.96);
+        padding: 12px 16px;
+        color: #0f172a;
+        font: 600 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 10px 30px rgb(15 23 42 / 0.18);
+      }
+
+      #map-status[hidden] {
+        display: none;
+      }
+    </style>
     <script>
-      // This prototype previously changed map runtimes several times. Remove stale
-      // RFxchange-specific browser-managed state without touching other Pages apps
-      // hosted on the same accelanalysis.github.io origin.
+      window.__RFX_CURRENT_BUILD__ = 'rfx-current-static-2026-07-25-1';
+      document.documentElement.dataset.rfxBuild = window.__RFX_CURRENT_BUILD__;
+
       try {
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.getRegistrations().then((registrations) => {
@@ -34,6 +119,152 @@
   <body>
     <div id="map" aria-label="Interactive RFxchange map"></div>
     <div id="map-status" role="status" aria-live="polite" hidden></div>
-    <script type="module" src="/src/main.js"></script>
+    <noscript>
+      <div id="map-status">JavaScript is required to load the RFxchange map.</div>
+    </noscript>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script>
+      const BUILD_ID = 'rfx-current-static-2026-07-25-1';
+      const FALLBACK_DELAY_MS = 7000;
+      const INITIAL_VIEW = {
+        center: [36.8354, -76.2983],
+        zoom: 12,
+      };
+      const providers = [
+        {
+          id: 'osm',
+          url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+          options: {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap contributors',
+          },
+        },
+        {
+          id: 'carto',
+          url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+          options: {
+            subdomains: 'abcd',
+            maxZoom: 20,
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+          },
+        },
+      ];
+
+      document.documentElement.dataset.rfxBuild = BUILD_ID;
+      document.documentElement.dataset.mapBuild = BUILD_ID;
+
+      const status = document.getElementById('map-status');
+
+      function showFailure(message) {
+        document.documentElement.dataset.mapFailed = 'true';
+        if (!status) return;
+        status.textContent = message;
+        status.hidden = false;
+      }
+
+      function clearFailure() {
+        delete document.documentElement.dataset.mapFailed;
+        if (!status) return;
+        status.hidden = true;
+        status.textContent = '';
+      }
+
+      function bootMap() {
+        if (!window.L) {
+          showFailure('The map runtime could not be loaded. Refresh the page or check the network connection.');
+          return;
+        }
+
+        const map = L.map('map', {
+          center: INITIAL_VIEW.center,
+          zoom: INITIAL_VIEW.zoom,
+          zoomControl: true,
+          attributionControl: true,
+          fadeAnimation: false,
+          zoomAnimation: false,
+          markerZoomAnimation: false,
+          preferCanvas: false,
+        });
+
+        let activeLayer = null;
+        let activeProviderIndex = -1;
+        let mapReady = false;
+        let fallbackTimer = null;
+
+        function markReady(providerId) {
+          if (mapReady) return;
+          mapReady = true;
+          clearTimeout(fallbackTimer);
+          clearFailure();
+          document.documentElement.dataset.mapReady = 'true';
+          document.documentElement.dataset.mapProvider = providerId;
+        }
+
+        function mountProvider(index) {
+          if (index < 0 || index >= providers.length) {
+            showFailure('The basemap could not be loaded. Check the network connection and reload the page.');
+            return;
+          }
+
+          activeProviderIndex = index;
+          const provider = providers[index];
+          let tileErrors = 0;
+
+          if (activeLayer) {
+            activeLayer.off();
+            map.removeLayer(activeLayer);
+          }
+
+          const layer = L.tileLayer(provider.url, {
+            ...provider.options,
+            updateWhenIdle: true,
+            keepBuffer: 2,
+          });
+
+          activeLayer = layer;
+
+          layer.on('tileload', () => {
+            if (activeLayer !== layer) return;
+            markReady(provider.id);
+          });
+
+          layer.on('tileerror', (event) => {
+            if (activeLayer !== layer || mapReady) return;
+            tileErrors += 1;
+            console.warn(`Map tile failed from ${provider.id}:`, event?.error ?? event);
+            if (tileErrors >= 3) mountProvider(index + 1);
+          });
+
+          layer.addTo(map);
+
+          clearTimeout(fallbackTimer);
+          fallbackTimer = window.setTimeout(() => {
+            if (!mapReady && activeLayer === layer) mountProvider(index + 1);
+          }, FALLBACK_DELAY_MS);
+        }
+
+        function refreshMapSize() {
+          map.invalidateSize(false);
+        }
+
+        mountProvider(0);
+        requestAnimationFrame(refreshMapSize);
+        window.setTimeout(refreshMapSize, 250);
+        window.addEventListener('resize', refreshMapSize, { passive: true });
+        window.addEventListener('orientationchange', () => window.setTimeout(refreshMapSize, 150), { passive: true });
+        document.addEventListener('visibilitychange', () => {
+          if (!document.hidden) window.setTimeout(refreshMapSize, 50);
+        });
+        window.addEventListener('online', () => {
+          if (!mapReady) mountProvider(Math.max(activeProviderIndex, 0));
+        });
+      }
+
+      bootMap();
+    </script>
   </body>
 </html>
