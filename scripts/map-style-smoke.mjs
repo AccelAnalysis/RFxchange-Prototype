@@ -1,19 +1,30 @@
-const OSM_TILE = 'https://tile.openstreetmap.org/12/1179/1605.png';
-
-const response = await fetch(OSM_TILE, {
-  redirect: 'follow',
-  headers: {
-    'User-Agent': 'RFxchange-Prototype-CI/1.0',
+const providers = [
+  {
+    name: 'OpenStreetMap',
+    url: 'https://tile.openstreetmap.org/12/1179/1605.png',
   },
-});
+  {
+    name: 'CARTO',
+    url: 'https://a.basemaps.cartocdn.com/light_all/12/1179/1605.png',
+  },
+];
 
-if (!response.ok) {
-  throw new Error(`OpenStreetMap tile returned HTTP ${response.status}`);
+for (const provider of providers) {
+  const response = await fetch(provider.url, {
+    redirect: 'follow',
+    headers: {
+      'User-Agent': 'RFxchange-Prototype-CI/1.1',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`${provider.name} tile returned HTTP ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.startsWith('image/')) {
+    throw new Error(`${provider.name} tile returned unexpected content type: ${contentType || 'none'}`);
+  }
 }
 
-const contentType = response.headers.get('content-type') || '';
-if (!contentType.startsWith('image/')) {
-  throw new Error(`OpenStreetMap tile returned unexpected content type: ${contentType || 'none'}`);
-}
-
-console.log('Map dependency smoke test passed: OpenStreetMap returned a valid image tile.');
+console.log('Map dependency smoke test passed: OpenStreetMap and CARTO each returned a valid image tile.');
