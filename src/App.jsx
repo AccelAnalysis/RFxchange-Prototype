@@ -4,8 +4,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   ArrowRight,
   Box,
+  BriefcaseBusiness,
   Building2,
-  Crosshair,
+  Landmark,
   LoaderCircle,
   Lock,
   Mail,
@@ -15,8 +16,6 @@ import {
   ShieldCheck,
   User,
   Users,
-  Landmark,
-  BriefcaseBusiness,
 } from 'lucide-react';
 import {
   boundsCenter,
@@ -35,6 +34,7 @@ import {
 } from './environment.js';
 
 const EMPTY_FEATURE_COLLECTION = { type: 'FeatureCollection', features: [] };
+const DEFAULT_VIEW = { center: [-98.5795, 39.8283], zoom: 2.5, pitch: 35, bearing: -8 };
 
 function disableMapInteractions(map) {
   map.boxZoom.disable();
@@ -66,10 +66,7 @@ function ensureEnvironmentLayers(map) {
       id: 'outside-selected-geography-fill',
       type: 'fill',
       source: 'outside-selected-geography',
-      paint: {
-        'fill-color': '#08090B',
-        'fill-opacity': 0.76,
-      },
+      paint: { 'fill-color': '#08090B', 'fill-opacity': 0.76 },
     });
   }
 
@@ -82,10 +79,7 @@ function ensureEnvironmentLayers(map) {
       id: 'selected-geography-fill',
       type: 'fill',
       source: 'selected-geography',
-      paint: {
-        'fill-color': '#D6A23A',
-        'fill-opacity': 0.12,
-      },
+      paint: { 'fill-color': '#D6A23A', 'fill-opacity': 0.12 },
     });
   }
 
@@ -220,13 +214,11 @@ export default function App() {
     geographyStatus: 'unselected',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [mapLoaded, setMapLoaded] = useState(false);
-  const [map3DReady, setMap3DReady] = useState(false);
-  const [mapError, setMapError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [locationError, setLocationError] = useState('');
   const [boundaryLoadingId, setBoundaryLoadingId] = useState(null);
   const [previewGeography, setPreviewGeography] = useState(null);
   const [environmentActive, setEnvironmentActive] = useState(false);
@@ -240,6 +232,7 @@ export default function App() {
   const timersRef = useRef(new Set());
   const boundaryAbortRef = useRef(null);
   const entitlementRef = useRef(null);
+  const pendingMapViewRef = useRef(null);
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((timerId) => window.clearTimeout(timerId));
@@ -262,7 +255,7 @@ export default function App() {
 
   const showEnvironmentMarkers = useCallback((map, geography, query = '') => {
     removeMarkers();
-    if (!geography) return;
+    if (!geography || !map?.loaded()) return;
 
     const normalized = query.trim().toLowerCase();
     const markers = buildMockEnvironmentMarkers(geography.center, geography.bounds)
@@ -281,6 +274,31 @@ export default function App() {
       }, index * 140);
     });
   }, [removeMarkers, schedule]);
+
+  const renderGeography = useCallback((map, geography, feature, animate = true) => {
+    if (!map || !map.loaded()) {
+      pendingMapViewRef.current = { geography, feature, animate };
+      return;
+    }
+
+    pendingMapViewRef.current = null;
+    ensureEnvironmentLayers(map);
+    const mask = createOutsideMaskFeature(feature.geometry);
+    map.getSource('selected-geography')?.setData({ type: 'FeatureCollection', features: [feature] });
+    map.getSource('outside-selected-geography')?.setData(
+      mask ? { type: 'FeatureCollection', features: [mask] } : EMPTY_FEATURE_COLLECTION,
+    );
+
+    map.easeTo({
+      ...cameraForGeography(map, geography.bounds, geography.center, true),
+      duration: animate ? 1600 : 0,
+      essential: true,
+    });
+
+    map.once('moveend', () => {
+      if (mapRef.current === map) enableMapInteractions(map);
+    });
+  }, []);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return undefined;
@@ -304,10 +322,7 @@ export default function App() {
         },
         layers: [{ id: 'carto-dark-layer', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 22 }],
       },
-      center: [-98.5795, 39.8283],
-      zoom: 2.5,
-      pitch: 35,
-      bearing: -8,
+      ...DEFAULT_VIEW,
       maxPitch: 75,
       interactive: true,
       antialias: true,
@@ -321,25 +336,16 @@ export default function App() {
       if (mapRef.current !== map) return;
       try {
         ensureEnvironmentLayers(map);
-        setMapLoaded(true);
-        setMapError('');
-      } catch (error) {
-        console.error('Map environment layer initialization failed:', error);
-        setMapError('The map loaded, but its geography layers could not be initialized.');
-      }
-
-      try {
         ensure3DBuildings(map);
-        setMap3DReady(true);
+        const pending = pendingMapViewRef.current;
+        if (pending) renderGeography(map, pending.geography, pending.feature, pending.animate);
       } catch (error) {
-        console.warn('3D building layer could not be initialized:', error);
-        setMap3DReady(false);
+        console.error('Map initialization failed:', error);
       }
     };
 
     const handleError = (event) => {
-      console.warn('MapLibre resource warning:', event?.error ?? event);
-      if (!map.loaded()) setMapError('The basemap could not load completely. Check the browser network connection.');
+      console.warn('Map resource warning:', event?.error ?? event);
     };
 
     map.on('load', handleLoad);
@@ -354,7 +360,7 @@ export default function App() {
       map.remove();
       if (mapRef.current === map) mapRef.current = null;
     };
-  }, [clearTimers, removeMarkers]);
+  }, [clearTimers, removeMarkers, renderGeography]);
 
   useEffect(() => {
     if (step !== 3 || previewGeography) return undefined;
@@ -376,8 +382,8 @@ export default function App() {
         setSearchResults(results);
       } catch (error) {
         if (error?.name !== 'AbortError') {
-          console.error('TIGERweb geography search failed:', error);
-          setSearchError('Census geography search is temporarily unavailable. Please try again.');
+          console.error('Location search failed:', error);
+          setSearchError('Search is unavailable right now. Try again.');
           setSearchResults([]);
         }
       } finally {
@@ -395,7 +401,7 @@ export default function App() {
     if (!environmentActive) return;
     const map = mapRef.current;
     const entitlement = entitlementRef.current;
-    if (!map || !entitlement) return;
+    if (!map?.loaded() || !entitlement) return;
     showEnvironmentMarkers(map, entitlement.geography, environmentQuery);
   }, [environmentActive, environmentQuery, showEnvironmentMarkers]);
 
@@ -407,6 +413,7 @@ export default function App() {
   const handleRegisterSubmit = (event) => {
     event.preventDefault();
     if (isSubmitting || !formData.termsAccepted) return;
+
     setIsSubmitting(true);
     schedule(() => {
       setOnboardingState((previous) => ({
@@ -420,22 +427,15 @@ export default function App() {
       }));
       setIsSubmitting(false);
       setStep(2);
-    }, 650);
+    }, 500);
   };
 
   const selectGeography = async (location) => {
-    const map = mapRef.current;
-    if (!map || !mapLoaded || !map.loaded()) {
-      setMapError('The map is still loading. Please try the geography again when it is ready.');
-      return;
-    }
-
     boundaryAbortRef.current?.abort();
     const controller = new AbortController();
     boundaryAbortRef.current = controller;
     setBoundaryLoadingId(location.id);
-    setSearchError('');
-    setMapError('');
+    setLocationError('');
 
     try {
       const feature = await fetchTigerBoundary(location, { signal: controller.signal });
@@ -443,21 +443,10 @@ export default function App() {
 
       const bounds = geometryBounds(feature.geometry);
       const center = boundsCenter(bounds) ?? location.center;
-      if (!bounds || !center) throw new Error('The geography boundary did not contain a usable extent.');
+      if (!bounds || !center) throw new Error('No usable map extent returned.');
 
       const canonical = canonicalOnboardingGeography(location, feature, center, bounds);
-      const entitlement = createPrototypeEntitlement(canonical, feature);
-      const mask = createOutsideMaskFeature(feature.geometry);
-
-      clearTimers();
-      removeMarkers();
-      ensureEnvironmentLayers(map);
-      map.getSource('selected-geography')?.setData({ type: 'FeatureCollection', features: [feature] });
-      map.getSource('outside-selected-geography')?.setData(
-        mask ? { type: 'FeatureCollection', features: [mask] } : EMPTY_FEATURE_COLLECTION,
-      );
-
-      entitlementRef.current = entitlement;
+      entitlementRef.current = createPrototypeEntitlement(canonical, feature);
       setOnboardingState((previous) => ({
         ...previous,
         selectedGeography: canonical,
@@ -467,21 +456,15 @@ export default function App() {
       setSearchQuery('');
       setSearchResults([]);
       setIs3D(true);
-
-      map.easeTo({
-        ...cameraForGeography(map, bounds, center, true),
-        duration: 1900,
-        essential: true,
-      });
-      map.once('moveend', () => {
-        if (mapRef.current === map) enableMapInteractions(map);
-      });
+      clearTimers();
+      removeMarkers();
+      renderGeography(mapRef.current, canonical, feature, true);
     } catch (error) {
       if (error?.name !== 'AbortError') {
-        console.error('Geography validation failed:', error);
+        console.error('Location selection failed:', error);
         entitlementRef.current = null;
         setOnboardingState((previous) => ({ ...previous, selectedGeography: null, geographyStatus: 'invalid' }));
-        setMapError('That geography could not be validated against Census TIGERweb. Choose another search result.');
+        setLocationError('We could not use that location. Try another.');
       }
     } finally {
       if (!controller.signal.aborted) setBoundaryLoadingId(null);
@@ -489,54 +472,55 @@ export default function App() {
   };
 
   const handleChangeGeography = () => {
-    const map = mapRef.current;
     entitlementRef.current = null;
+    pendingMapViewRef.current = null;
     setPreviewGeography(null);
     setEnvironmentActive(false);
     setEnvironmentQuery('');
+    setLocationError('');
     setOnboardingState((previous) => ({ ...previous, selectedGeography: null, geographyStatus: 'unselected' }));
     removeMarkers();
+
+    const map = mapRef.current;
     if (map?.loaded()) {
       map.getSource('selected-geography')?.setData(EMPTY_FEATURE_COLLECTION);
       map.getSource('outside-selected-geography')?.setData(EMPTY_FEATURE_COLLECTION);
       disableMapInteractions(map);
-      map.easeTo({ center: [-98.5795, 39.8283], zoom: 2.5, pitch: 35, bearing: -8, duration: 900 });
+      map.easeTo({ ...DEFAULT_VIEW, duration: 700 });
     }
   };
 
   const handleEnterEnvironment = async () => {
-    const map = mapRef.current;
     const entitlement = entitlementRef.current;
     const selected = onboardingState.selectedGeography;
-    if (!map || !entitlement || !selected || !entitlementAllows(entitlement, selected)) {
-      setMapError('Geography authorization is missing or no longer matches onboarding. Select the geography again.');
+    if (!entitlement || !selected || !entitlementAllows(entitlement, selected)) {
+      setLocationError('Please choose your location again.');
       return;
     }
 
     setIsEnteringEnvironment(true);
-    setMapError('');
+    setLocationError('');
     try {
       const feature = await fetchTigerBoundary(entitlement.geography);
       validateFeatureIdentity(entitlement.geography, feature);
-
       if (!entitlementAllows(entitlement, onboardingState.selectedGeography)) {
-        throw new Error('The selected geography changed after validation.');
+        throw new Error('Selected location changed.');
       }
 
       setOnboardingState((previous) => ({ ...previous, geographyStatus: 'authorized' }));
       setEnvironmentActive(true);
       setStep(4);
       setEnvironmentQuery('');
-      showEnvironmentMarkers(map, entitlement.geography, '');
-      map.easeTo({
-        ...cameraForGeography(map, entitlement.geography.bounds, entitlement.geography.center, true),
-        duration: 1000,
-        essential: true,
-      });
-      enableMapInteractions(map);
+      renderGeography(mapRef.current, entitlement.geography, feature, false);
+
+      const map = mapRef.current;
+      if (map?.loaded()) {
+        showEnvironmentMarkers(map, entitlement.geography, '');
+        enableMapInteractions(map);
+      }
     } catch (error) {
-      console.error('Controlled environment authorization failed:', error);
-      setMapError('The selected geography could not be revalidated for environment access. Select it again.');
+      console.error('Location setup failed:', error);
+      setLocationError('We could not finish setting up this location. Try again.');
       setOnboardingState((previous) => ({ ...previous, geographyStatus: 'invalid' }));
       entitlementRef.current = null;
     } finally {
@@ -546,10 +530,11 @@ export default function App() {
 
   const toggle3D = () => {
     const map = mapRef.current;
-    if (!map) return;
     setIs3D((previous) => {
       const next = !previous;
-      map.easeTo({ pitch: next ? 62 : 0, bearing: next ? -18 : 0, duration: 650, essential: true });
+      if (map?.loaded()) {
+        map.easeTo({ pitch: next ? 62 : 0, bearing: next ? -18 : 0, duration: 650, essential: true });
+      }
       return next;
     });
   };
@@ -558,7 +543,7 @@ export default function App() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0B0B0D] p-4 font-sans text-[#F7F3EA] antialiased">
-      <div ref={mapContainerRef} className="absolute inset-0 z-0" aria-label="Interactive 3D RFxchange geography map" />
+      <div ref={mapContainerRef} className="absolute inset-0 z-0" aria-label="Interactive RFxchange map" />
 
       <div
         className={`pointer-events-none absolute inset-0 z-0 transition-opacity duration-1000 ${
@@ -567,12 +552,6 @@ export default function App() {
             : 'bg-[radial-gradient(circle_at_center,transparent_0%,#0B0B0D_100%)] opacity-60'
         }`}
       />
-
-      {mapError && (
-        <div className="absolute left-1/2 top-4 z-50 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-red-400/30 bg-red-950/90 px-4 py-3 text-sm text-red-100 shadow-xl" role="alert">
-          {mapError}
-        </div>
-      )}
 
       {step === 1 && (
         <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-[32px] border border-[#F7F3EA]/10 bg-[#252932]/70 shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl animate-[fadeIn_0.5s_ease-out]">
@@ -584,7 +563,7 @@ export default function App() {
               <h1 className="text-2xl font-semibold tracking-wide">The <span className="font-light">RF</span>xchange</h1>
             </div>
             <h2 className="mb-2 text-3xl font-medium tracking-tight">Activate your network.</h2>
-            <p className="mx-auto max-w-sm text-sm text-[#F7F3EA]/60">Create your business account, then establish its primary RFxchange locality.</p>
+            <p className="mx-auto max-w-sm text-sm text-[#F7F3EA]/60">Create your business account and connect with your local business community.</p>
           </div>
 
           <form onSubmit={handleRegisterSubmit} className="space-y-5 px-6 py-8 sm:px-10">
@@ -625,9 +604,9 @@ export default function App() {
         <div className="relative z-10 w-full max-w-lg rounded-[32px] border border-[#D6A23A]/30 bg-[#252932]/70 p-8 text-center shadow-[0_0_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl animate-[fadeIn_0.5s_ease-out] sm:p-10">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-[#D6A23A]/50 bg-[#D6A23A]/10 shadow-inner"><MapPin size={32} className="text-[#D6A23A]" /></div>
           <h2 className="mb-4 text-3xl font-semibold tracking-tight">Welcome to The RFxchange.</h2>
-          <p className="mb-10 text-lg leading-relaxed text-[#F7F3EA]/80">Choose your primary locality. It becomes the controlled map environment where your business begins participating.</p>
+          <p className="mb-10 text-lg leading-relaxed text-[#F7F3EA]/80">Choose the area where your business is based to begin exploring your local network.</p>
           <button type="button" onClick={() => setStep(3)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[#D6A23A] py-4 font-semibold text-[#0B0B0D] shadow-lg shadow-[#D6A23A]/20 transition-all hover:-translate-y-0.5 hover:bg-[#e4b553]">
-            Choose My Locality<Navigation size={18} />
+            Choose My Area<Navigation size={18} />
           </button>
         </div>
       )}
@@ -635,9 +614,8 @@ export default function App() {
       {step === 3 && !previewGeography && (
         <div className="absolute left-1/2 top-8 z-20 w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2">
           <div className="rounded-[32px] border border-[#F7F3EA]/20 bg-[#252932]/88 p-6 shadow-2xl backdrop-blur-2xl animate-[slideDown_0.5s_ease-out] sm:p-8">
-            <h2 className="mb-2 text-center text-2xl font-semibold">Choose your RFxchange locality</h2>
-            <p className="mb-2 text-center text-sm text-[#F7F3EA]/60">Search any U.S. city, county, ZIP Code Tabulation Area, locality, or metro area.</p>
-            <p className="mb-6 text-center text-xs text-[#D6A23A]/85">Selections are validated against live Census TIGERweb boundaries.</p>
+            <h2 className="mb-2 text-center text-2xl font-semibold">Where is your business based?</h2>
+            <p className="mb-6 text-center text-sm text-[#F7F3EA]/60">Search by city, county, ZIP code, or metro area.</p>
 
             <div className="relative">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-5">
@@ -647,13 +625,12 @@ export default function App() {
                 type="search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                disabled={!mapLoaded}
-                className="w-full rounded-2xl border-2 border-[#D6A23A]/30 bg-[#0B0B0D]/80 py-4 pl-14 pr-6 text-lg text-[#F7F3EA] shadow-inner transition-all placeholder:text-[#F7F3EA]/40 focus:border-[#D6A23A] focus:outline-none focus:ring-4 focus:ring-[#D6A23A]/20 disabled:cursor-wait disabled:opacity-60"
-                placeholder={mapLoaded ? 'e.g. Portsmouth VA, Cook County IL, 90210...' : 'Loading map...'}
+                className="w-full rounded-2xl border-2 border-[#D6A23A]/30 bg-[#0B0B0D]/80 py-4 pl-14 pr-6 text-lg text-[#F7F3EA] shadow-inner transition-all placeholder:text-[#F7F3EA]/40 focus:border-[#D6A23A] focus:outline-none focus:ring-4 focus:ring-[#D6A23A]/20"
+                placeholder="e.g. Portsmouth VA, Cook County IL, 90210..."
                 autoFocus
               />
 
-              {(searchResults.length > 0 || searchError || (searchQuery.trim().length >= 2 && !isSearching)) && (
+              {(searchResults.length > 0 || searchError || locationError || (searchQuery.trim().length >= 2 && !isSearching)) && (
                 <div className="absolute left-0 right-0 top-full z-30 mt-3 max-h-[22rem] overflow-y-auto rounded-2xl border border-[#F7F3EA]/10 bg-[#252932]/97 shadow-2xl backdrop-blur-xl">
                   {searchResults.map((location) => (
                     <button
@@ -668,14 +645,15 @@ export default function App() {
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-base font-semibold">{geographyLabel(location)}</span>
-                        <span className="block text-sm text-[#F7F3EA]/50">{location.type} · {location.vintage}</span>
+                        <span className="block text-sm text-[#F7F3EA]/50">{location.type}</span>
                       </span>
                     </button>
                   ))}
-                  {!isSearching && searchResults.length === 0 && !searchError && (
-                    <div className="px-5 py-4 text-sm text-[#F7F3EA]/60">No matching Census geography found. Try a place name, county, state abbreviation, or 5-digit ZIP.</div>
+                  {!isSearching && searchResults.length === 0 && !searchError && !locationError && (
+                    <div className="px-5 py-4 text-sm text-[#F7F3EA]/60">No matches found. Try another place name, county, state, or ZIP code.</div>
                   )}
                   {searchError && <div className="px-5 py-4 text-sm text-red-200">{searchError}</div>}
+                  {locationError && <div className="px-5 py-4 text-sm text-red-200">{locationError}</div>}
                 </div>
               )}
             </div>
@@ -689,17 +667,16 @@ export default function App() {
             <Box size={17} className={is3D ? 'text-[#D6A23A]' : 'text-[#F7F3EA]/50'} />{is3D ? '3D' : '2D'}
           </button>
 
-          <div className="absolute bottom-6 left-1/2 z-20 flex w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 flex-col items-stretch gap-5 rounded-[32px] border border-[#D6A23A]/50 bg-[#252932]/92 px-6 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl animate-[slideUp_0.5s_ease-out_1.4s_both] md:flex-row md:items-center md:gap-6 md:px-8">
+          <div className="absolute bottom-6 left-1/2 z-20 flex w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 flex-col items-stretch gap-5 rounded-[32px] border border-[#D6A23A]/50 bg-[#252932]/92 px-6 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl animate-[slideUp_0.5s_ease-out_1.1s_both] md:flex-row md:items-center md:gap-6 md:px-8">
             <div className="min-w-0 flex-1">
-              <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#F7F3EA]/60"><ShieldCheck size={13} className="text-[#D6A23A]" />Validated locality</div>
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-[#F7F3EA]/60">Your area</div>
               <div className="truncate text-2xl font-bold text-[#F7F3EA]">{geographyName}</div>
-              <div className="mt-1 text-xs text-[#F7F3EA]/50">Census boundary loaded · Outside territory muted · {map3DReady ? '3D buildings active' : '3D camera active'}</div>
             </div>
             <div className="hidden h-12 w-px bg-[#F7F3EA]/20 md:block" />
             <div className="flex flex-col gap-2 sm:flex-row">
               <button type="button" onClick={handleChangeGeography} className="rounded-xl border border-[#F7F3EA]/20 px-5 py-3 font-semibold text-[#F7F3EA] transition hover:bg-[#F7F3EA]/5">Change</button>
               <button type="button" onClick={handleEnterEnvironment} disabled={isEnteringEnvironment} className="flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[#D6A23A] px-6 py-3 font-bold text-[#0B0B0D] transition hover:-translate-y-0.5 hover:bg-[#e4b553] disabled:cursor-wait disabled:opacity-60">
-                {isEnteringEnvironment ? <><LoaderCircle size={17} className="animate-spin" />Authorizing...</> : <>Enter RFxchange<ArrowRight size={17} /></>}
+                {isEnteringEnvironment ? <><LoaderCircle size={17} className="animate-spin" />Opening...</> : <>Continue<ArrowRight size={17} /></>}
               </button>
             </div>
           </div>
@@ -713,7 +690,7 @@ export default function App() {
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#D6A23A] font-bold text-[#0B0B0D]">RF</div>
               <div className="min-w-0">
                 <div className="truncate font-semibold">{geographyName}</div>
-                <div className="text-xs text-[#F7F3EA]/55">Controlled RFxchange locality</div>
+                <div className="text-xs text-[#F7F3EA]/55">The RFxchange</div>
               </div>
             </div>
 
@@ -724,7 +701,7 @@ export default function App() {
                 value={environmentQuery}
                 onChange={(event) => setEnvironmentQuery(event.target.value)}
                 className="w-full rounded-2xl border border-[#F7F3EA]/15 bg-[#17191E]/90 py-3.5 pl-11 pr-4 text-[#F7F3EA] backdrop-blur-xl placeholder:text-[#F7F3EA]/35 focus:border-[#D6A23A]/70 focus:outline-none focus:ring-2 focus:ring-[#D6A23A]/15"
-                placeholder="Search Platinum businesses and official resources in this locality..."
+                placeholder="Search businesses and resources..."
               />
             </div>
 
@@ -734,12 +711,9 @@ export default function App() {
           </div>
 
           <div className="absolute bottom-5 left-4 z-20 w-[calc(100%-2rem)] max-w-sm rounded-[28px] border border-[#F7F3EA]/12 bg-[#17191E]/92 p-5 backdrop-blur-2xl md:bottom-6 md:left-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#D6A23A]">RFxchange</div>
-                <h2 className="mt-1 text-xl font-semibold">Local network</h2>
-              </div>
-              <span className="rounded-full border border-[#D6A23A]/30 bg-[#D6A23A]/10 px-3 py-1 text-xs font-semibold text-[#D6A23A]">Authorized</span>
+            <div className="mb-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#D6A23A]">RFxchange</div>
+              <h2 className="mt-1 text-xl font-semibold">Local network</h2>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -749,9 +723,8 @@ export default function App() {
             </div>
 
             <div className="mt-4 border-t border-[#F7F3EA]/10 pt-4 text-xs leading-relaxed text-[#F7F3EA]/55">
-              <div className="mb-2 flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full border border-[#D6A23A] bg-[#D6A23A]/25" />Platinum users</div>
-              <div className="mb-3 flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full border border-[#5EA4FF] bg-[#2E5EAA]/30" />Official resources</div>
-              Other territories remain visually muted and are not available for full participation during onboarding.
+              <div className="mb-2 flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full border border-[#D6A23A] bg-[#D6A23A]/25" />Platinum members</div>
+              <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full border border-[#5EA4FF] bg-[#2E5EAA]/30" />Local resources</div>
             </div>
           </div>
         </>
