@@ -47,6 +47,7 @@ map.addControl(
 );
 
 map.on('load', () => {
+  document.documentElement.dataset.mapLoaded = 'true';
   map.resize();
 
   try {
@@ -80,9 +81,15 @@ map.on('load', () => {
         'fill-extrusion-vertical-gradient': true,
       },
     });
+
+    document.documentElement.dataset.buildingsLayer = 'ready';
   } catch (error) {
     console.error('3D building layer could not be added:', error);
   }
+});
+
+map.once('idle', () => {
+  document.documentElement.dataset.mapReady = 'true';
 });
 
 map.on('error', (event) => {
